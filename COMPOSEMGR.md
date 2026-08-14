@@ -37,6 +37,12 @@ file: it sources the repo's `app.env`, `~/.config/secure/cloudflare.txt`, detect
 `BASE_HOST_NAME` as `{name}.$BASE_DOMAIN_NAME`. The variables it exports are the
 vocabulary in PART 3 — compose files consume them, never define their own names.
 
+**Env precedence:** the composemgr-generated default env file is the preferred and
+authoritative source of values — the full variable set lives in the composemgr
+script itself (`__update_env_file`), which is the canonical list. The repo's
+`app.env` exists only to overwrite the few selected vars a deployment needs to
+change; it must never restate the whole set.
+
 **Why every reference is `${VAR:-fallback}`:** composemgr exports the real values when
 it runs the stack; the hardcoded safe fallbacks exist so the same compose file also
 works WITHOUT composemgr — plain `docker compose up -d`, zero config. Never remove a
@@ -153,9 +159,11 @@ networks:
 
 ## Standard env var vocabulary
 
-These are the variables composemgr exports (see `__update_env_file` in the script).
-Compose files may only reference names from this vocabulary; app-native variable
-names (`GITEA__server__DOMAIN`, `ADMIN_TOKEN`, …) are set from these via
+The authoritative, always-current list is `__update_env_file` in the composemgr
+script — when in doubt, read the script, not this table. The tables below are a
+reference snapshot of the variables composemgr exports. Compose files may only
+reference names from this vocabulary; app-native variable names
+(`GITEA__server__DOMAIN`, `ADMIN_TOKEN`, …) are set from these via
 `APP_NATIVE_VAR: ${STANDARD_VAR:-fallback}` in the `environment:` block.
 
 ### Core
@@ -289,6 +297,10 @@ BASE_HOST_NAME={name}.example.com
 - Header comment names the app and states the copy-to-`app.env` instruction
 - Grouped by concern with a comment above each group (Timezone, Hostname, Secrets,
   Database, Email / SMTP, …)
+- **Selected overrides only** — `app.env` overwrites the few vars a deployment
+  actually needs to change; the full set comes from the composemgr-generated
+  default env file (PART 0 precedence). Never dump the whole vocabulary into the
+  sample
 - Only variables the compose file actually references — keep it in sync; a var in the
   sample that no service consumes is a bug
 - Values are the same safe defaults the compose file falls back to
