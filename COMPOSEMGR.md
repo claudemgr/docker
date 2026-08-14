@@ -270,9 +270,16 @@ precedence over `env_file`, so mapped standard vars stay authoritative.
 # PART 4 — Optional Label Blocks (add on request only)
 
 By default a compose file has **no `labels:` block** and only the minimal network set.
-When the user asks to "add cloudflare" or "add traefik" (or both), add the exact block
-below to the requested service and extend `networks` accordingly. Never add these
-unprompted, and never invent label variants.
+When the user asks to "add {tool}" or "add label {tool}" (e.g. "add traefik",
+"add label watchtower"), add the exact block below to the requested service and
+extend `networks` only where the block says so. Never add any of these unprompted,
+and never invent label variants.
+
+Supported tools: `cloudflare`, `traefik`, `caddy`, `watchtower`, `diun`,
+`autoheal`, `homepage`, `dozzle`. Only cloudflare/traefik/caddy touch networking
+(the proxy container must reach the service); the rest are pure label add-ons —
+no network changes. The host nginx proxy is NOT label-driven — it stays on the
+`172.17.0.1:{ext_port}` published port regardless of labels.
 
 ## "add cloudflare"
 
@@ -319,11 +326,83 @@ Service networks gain `proxy`; top-level `networks:` gains:
     external: true
 ```
 
+## "add caddy" (caddy-docker-proxy)
+
+Service labels:
+
+```yaml
+    labels:
+      - 'caddy=${BASE_HOST_NAME:-$HOSTNAME}'
+      - 'caddy.reverse_proxy={{upstreams {port}}}'
+```
+
+Service networks gain `caddy`; top-level `networks:` gains:
+
+```yaml
+  caddy:
+    external: true
+```
+
+## "add watchtower"
+
+Opt-in auto-update of the running container (complements `pull_policy: always`,
+which only refreshes on recreate). No network changes.
+
+```yaml
+    labels:
+      - 'com.centurylinklabs.watchtower.enable=true'
+```
+
+## "add diun"
+
+Image-update notifications without auto-updating. No network changes.
+
+```yaml
+    labels:
+      - 'diun.enable=true'
+```
+
+## "add autoheal"
+
+Restarts the container when its healthcheck reports unhealthy — the service MUST
+define a `healthcheck:` (add one per PART 3 canon if missing). No network changes.
+
+```yaml
+    labels:
+      - 'autoheal=true'
+```
+
+## "add homepage"
+
+Dashboard entry for the homepage app. `href` uses the public hostname (nginx runs
+on the host — never point at an nginx container). No network changes.
+
+```yaml
+    labels:
+      - 'homepage.group=Apps'
+      - 'homepage.name={Name}'
+      - 'homepage.icon={name}'
+      - 'homepage.href=https://${BASE_HOST_NAME:-$HOSTNAME}'
+      - 'homepage.description={Name}'
+```
+
+## "add dozzle"
+
+Log-viewer grouping — apply to EVERY service in the stack so the whole stack
+groups together. No network changes.
+
+```yaml
+    labels:
+      - 'dev.dozzle.group={name}'
+```
+
 ## Combined ("add cloudflare and traefik")
 
 Merge both label lists under one `labels:` block (traefik+cloudflare enable lines first,
-matching existing repos), add both external networks. `{port}` in every label is the
-service's **internal** container port, never the published one.
+matching existing repos), add both external networks. The same merge rule applies to any
+combination of supported tools: one `labels:` block per service, proxy-tool labels
+(cloudflare/traefik/caddy) first, then the rest in the order requested. `{port}` in every
+label is the service's **internal** container port, never the published one.
 
 **Host rule syntax:** traefik matcher values take backticks —
 ``Host(`${BASE_HOST_NAME:-$HOSTNAME}`)``. Existing repos carry a legacy

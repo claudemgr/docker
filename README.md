@@ -23,7 +23,7 @@ Template specifications for CasjaysDev Docker image repositories. Each file is a
 ## Highlights
 
 - Org mapping: GitHub `dockersrc` ↔ Docker Hub `casjaysdev` for bases; `casjaysdevdocker` on both systems for apps, which always build FROM `casjaysdev/*` bases; `composemgr` repos deploy images, never build them
-- Compose stacks: labels are optional and off by default — cloudflare/traefik label blocks are added only on request from the templates in COMPOSEMGR.md PART 4; networks default to one stack-private network
+- Compose stacks: labels are optional and off by default — cloudflare/traefik/caddy/watchtower/diun/autoheal/homepage/dozzle label blocks are added only on request ("add {tool}" / "add label {tool}") from the templates in COMPOSEMGR.md PART 4; networks default to one stack-private network
 - Every master ends with an examples PART excerpted from real repos (go toolchain 05-custom.sh, gitea init.d scripts, vaultwarden/gitea compose stacks)
 - All generated content comes from `gen-dockerfile`/`gen-script` — the spec defines what is generated vs hand-crafted and which files tooling must never overwrite
 - OCI label canon: `image.url` is the browsable `https://hub.docker.com/r/casjaysdev/{name}` page; `image.source`/`documentation` point at the GitHub repo; retired labels stay retired
