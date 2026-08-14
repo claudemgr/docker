@@ -8,7 +8,8 @@ never delete it, never rewrite its structure, only sync it from the master copy 
 Placeholders: `{name}` = repository/stack name (e.g. `vaultwarden`) · `{service}` =
 service key inside the stack (e.g. `app`, `db`) · `{port}` = the service's internal
 container port · `{ext_port}` = the host-side published port · `{image}` = the
-upstream (or `casjaysdevdocker/*`) image reference.
+upstream (or `casjaysdevdocker/*`) image reference · `{Name}` = capitalized display
+form of `{name}`.
 
 # PART 0 — Repository Identity
 
@@ -88,7 +89,7 @@ where they differ (labels, ports), this spec wins.
 ├── docker-compose.yaml     # the stack — the only functional file
 ├── app.env.sample          # documented env template → copy to app.env
 ├── .gitattributes
-├── .gitignore              # ignores app.env, volumes/
+├── .gitignore              # org-shared: ignores .env, app.env, default.env, compose.yml/.yaml, volumes/, rootfs/
 ├── LICENSE.md              # MIT
 ├── README.md               # PART 6 layout
 └── AI.md                   # this spec (copied from claudemgr/docker/COMPOSEMGR.md)
@@ -156,6 +157,14 @@ networks:
 - **Multi-port stacks** publish each additional port on `172.17.0.1` too; non-HTTP
   listener exceptions (e.g. SSH `'2222:22'`) are allowed when the service genuinely
   needs LAN exposure
+- **Shared env across services** — multi-service stacks may define additional
+  `x-environment: &some-environment` anchors and apply them with YAML merge keys:
+  `<<: *default-environment` or `<<: [*default-environment, *other-environment]`
+  (real pattern from the icecast repo); service-specific vars follow the merge key
+- **SELinux volume labels** — the `:z` suffix on bind mounts
+  (`'./volumes/data/{name}:/data:z'`) is allowed and preserved where present
+- **Read-only host mounts** — host media/config handed to a container gets `:ro`
+  (e.g. `'/etc/localtime:/etc/localtime:ro'`)
 
 ## Standard env var vocabulary
 
@@ -194,7 +203,11 @@ reference names from this vocabulary; app-native variable names
 | `APP_JWT_TOKEN` / `APP_API_TOKEN` | JWT / API tokens | `changeme_*` |
 | `APP_TEMP_PASS` | temporary first-run password | `changeme_*` |
 | `RPC_SECRET` / `ENCRYPTION_KEY` | app-specific secrets | `changeme_*` |
+| `SECURE_SECRET` / `K256_PRIVATE_KEY` | crypto secrets | `changeme_*` |
 | `BACKUPS_PW` | backup encryption password | `changeme_*` |
+
+The script also exports niche sets not tabled here (`RFC2136_*` for DNS-01, and
+more over time) — the script is always the complete list.
 
 ### Databases
 
@@ -234,17 +247,22 @@ Two mechanisms, in order of preference:
 2. **env_file loading (fallback)** — when the image reads its own native variable
    names directly (or there are too many to sensibly map one-by-one), set the
    image-specific vars in `app.env` and hand the env files straight to the
-   container via an anchor (real pattern from the icecast repo):
+   container via an anchor (pattern from the icecast repo):
 
    ```yaml
    x-env-file: &env_file
-     - .env
-     - app.env
+     - path: .env
+       required: false
+     - path: app.env
+       required: false
    ```
 
    applied per service with `env_file: *env_file`. `.env` is the
    composemgr-generated defaults file; `app.env` carries the deployment's
-   overrides.
+   overrides. **`required: false` is mandatory** — the bare list form
+   (`- .env`) makes compose error out when the files don't exist, breaking the
+   zero-config guarantee (rule 6, verified: `docker compose config` fails);
+   legacy repos using the bare form get corrected on touch.
 
 Both mechanisms may coexist on one service — compose gives `environment:` entries
 precedence over `env_file`, so mapped standard vars stay authoritative.
@@ -340,7 +358,8 @@ BASE_HOST_NAME={name}.example.com
   sample
 - Only variables the compose file actually references — keep it in sync; a var in the
   sample that no service consumes is a bug
-- Values are the same safe defaults the compose file falls back to
+- Values are safe placeholders — either the compose file's fallback or an obvious
+  example value (`{name}.example.com`); never a real secret
 
 # PART 6 — README.md Canon
 
@@ -370,8 +389,9 @@ READMEs keep their structure; update facts only.
 
 Before every commit:
 
-1. `docker compose -f docker-compose.yaml config -q` — must exit 0 (run with defaults,
-   no `app.env`, proving the zero-config guarantee)
+1. `docker compose -f docker-compose.yaml config -q` — must exit 0 run in a state
+   with NO `.env`/`app.env` present, proving the zero-config guarantee (this is
+   what catches env_file entries missing `required: false`)
 2. README facts diffed against the compose file (ports, images, volumes, env vars)
 3. `app.env.sample` vars all consumed by the compose file, and vice versa for any
    var without a safe inline default
@@ -509,6 +529,148 @@ services:
 networks:
   gitea:
     name: gitea
+    external: false
+```
+
+## CasjaysDev app image stack (rustfs — `casjaysdevdocker/*` image, multi-port)
+
+Shows: a stack deploying a CasjaysDev app image instead of an upstream one, two
+published ports, `:z` SELinux volume labels, `/data` + `/config` volume pair
+(the casjaysdevdocker image convention).
+
+```yaml
+# nginx proxy address - http://172.17.0.1:53090
+
+name: rustfs
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '5m'
+    max-file: '1'
+
+services:
+  app:
+    image: casjaysdevdocker/rustfs:latest
+    container_name: rustfs-app
+    hostname: ${BASE_HOST_NAME:-$HOSTNAME}
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    environment:
+      TZ: ${TZ:-America/New_York}
+      CONTAINER_NAME: rustfs-app
+      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
+      RUSTFS_REGION: us-east-1
+      RUSTFS_ROOT_USER: ${APP_ADMIN_USER:-administrator}
+      RUSTFS_ROOT_PASSWORD: ${APP_ADMIN_PASS:-changeme_admin_password}
+      RUSTFS_ACCESS_KEY: ${APP_ADMIN_USER:-administrator}
+      RUSTFS_SECRET_KEY: ${APP_ADMIN_PASS:-changeme_admin_password}
+      RUSTFS_BROWSER_REDIRECT_URL: https://console.${BASE_DOMAIN_NAME:-example.com}
+    ports:
+      - '172.17.0.1:53090:9000'
+      - '172.17.0.1:53091:9001'
+    volumes:
+      - './volumes/data/rustfs:/data:z'
+      - './volumes/config/rustfs:/config:z'
+    networks:
+      - rustfs
+
+networks:
+  rustfs:
+    name: rustfs
+    external: false
+```
+
+## env_file + shared-anchor stack (icecast — multi-service, no database)
+
+Shows: the env_file mechanism with `required: false`, shared `x-environment`
+anchors merged with `<<:`, a TCP healthcheck with `start_period`, read-only host
+media mounts, and non-db services gated on `service_healthy`. (A third stream
+service identical to `music` is omitted for brevity.)
+
+```yaml
+# nginx proxy address - http://172.17.0.1:61025
+
+name: icecast
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '5m'
+    max-file: '1'
+
+x-env-file: &env_file
+  - path: .env
+    required: false
+  - path: app.env
+    required: false
+
+x-environment: &default-environment
+  TZ: ${TZ:-America/New_York}
+  STREAM_PORT: 8000
+  STREAM_HOST: server
+  STREAM_PROTOCOL: http
+  ICECAST_HOSTNAME: ${BASE_HOST_NAME:-localhost}
+  STREAM_PASSWORD: ${APP_SECRET_KEY:-changeme_stream_password}
+  ICECAST_SOURCE_PASSWORD: ${APP_SECRET_KEY:-changeme_stream_password}
+
+x-ices0: &ices-environment
+  STREAM_BITRATE: 320
+  STREAM_PLAYLIST_TYPE: builtin
+  STREAM_MEDIA_FOLDER: /media
+  STREAM_CONFIG: /ices/ices.conf
+  STREAM_PLAYLIST: /ices/playlist.txt
+
+services:
+  server:
+    image: libretime/icecast:latest
+    container_name: icecast-server
+    hostname: ${BASE_HOST_NAME:-$HOSTNAME}
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    env_file: *env_file
+    environment:
+      <<: *default-environment
+      ICECAST_ADMIN_USERNAME: ${APP_ADMIN_USER:-admin}
+      ICECAST_ADMIN_PASSWORD: ${APP_ADMIN_PASS:-changeme_admin_password}
+      CONTAINER_NAME: icecast-server
+      HOSTNAME: ${BASE_HOST_NAME:-$HOSTNAME}
+    ports:
+      - '172.17.0.1:61025:8000'
+    healthcheck:
+      test: timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8000' || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    networks:
+      - icecast
+
+  music:
+    image: ghcr.io/binmgr/ices0:latest
+    container_name: icecast-music
+    hostname: music
+    restart: always
+    pull_policy: always
+    logging: *default-logging
+    env_file: *env_file
+    environment:
+      <<: [*default-environment, *ices-environment]
+      STREAM_MOUNTPOINT: /music
+      STREAM_NAME: Music
+      STREAM_DESCRIPTION: ${APP_ORG_NAME:-MyOrg} Music
+      CONTAINER_NAME: icecast-music
+    volumes:
+      - '/mnt/Music/Mp3:/media:ro'
+    depends_on:
+      server:
+        condition: service_healthy
+    networks:
+      - icecast
+
+networks:
+  icecast:
+    name: icecast
     external: false
 ```
 
