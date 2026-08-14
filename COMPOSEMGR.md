@@ -31,8 +31,9 @@ form of `{name}`.
 `backup` snapshots project data, `network` manages the shared docker networks,
 `nginx {host} {url}` generates the reverse-proxy config from the line-1 proxy comment,
 and `repo pull|push|commit` handles git ops. Stacks it manages live under
-`/srv/$USER/compose/{name}` (the script auto-migrates legacy
-`/srv/$USER/composemgr` and `/var/lib/srv/$USER/composemgr` trees there). Networks
+`/srv/$USER/compose/{name}`, falling back to `~/.local/srv/compose/{name}` when
+`/srv/$USER/compose` is not readable and writable (the script auto-migrates
+legacy `/srv/$USER/composemgr` and `/var/lib/srv/$USER/composemgr` trees). Networks
 listed in `COMPOSEMGR_NETWORKS` (comma-separated) are created silently before `up`
 if missing. A per-repo `.composemgr` file can set `COMPOSEMGR_ENV_ENABLED` to gate
 env-file generation for that stack.
@@ -460,7 +461,7 @@ Section order (emoji headers, matching existing repos):
 3. `## 🚀 Services` — bullet list `- **{service}**: {image}:{tag}`
 4. `## 📦 Installation` — three options, in this order:
    - Quick Install: `curl -q -LSsf "https://raw.githubusercontent.com/composemgr/{name}/main/docker-compose.yaml" -o compose.yml`
-   - Git Clone: `git clone "https://github.com/composemgr/{name}" ~/.local/srv/docker/{name}` + `docker compose up -d`
+   - Git Clone: `git clone "https://github.com/composemgr/{name}" ~/.local/srv/compose/{name}` + `docker compose up -d`
    - Using composemgr: `composemgr install {name}`
 5. `## 🔧 Configuration` — key env vars in a `shell` fence + pointer to the compose file
 6. `## 🌐 Access` — `- **Web Interface**: http://172.17.0.1:{ext_port}`
