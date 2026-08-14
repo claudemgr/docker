@@ -11,13 +11,6 @@ bugs in this repo's templates.
   (`- .env`), which breaks the zero-config guarantee when the files are
   absent — convert to `- path: .env` / `required: false` form per
   COMPOSEMGR.md PART 3 (fix on touch)
-- [ ] `composemgr` script gap (user's call, script maintained by user):
-  `__update_env_file` does not export `APP_ADMIN_HASH`,
-  `EMAIL_SERVER_USE_TLS`, `EMAIL_SERVER_USE_SSL` although
-  `composemgr/.github` default.env.sample carries them and
-  authentik/sentry/paperless-ngx consume the TLS/SSL pair — env
-  regeneration silently drops user-set values for these three vars;
-  either add the exports to the script or drop them from the sample
 - [ ] 296 of 300 `composemgr/*` READMEs document the git-clone path as
   `~/.local/srv/docker/{name}` — correct to `~/.local/srv/compose/{name}`
   per COMPOSEMGR.md PART 6 (fix at AI.md sweep); primary path is

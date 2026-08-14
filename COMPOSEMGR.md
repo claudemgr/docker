@@ -190,7 +190,7 @@ reference names from this vocabulary; app-native variable names
 | `BASE_DOMAIN_NAME` | bare domain | `example.com` |
 | `HOST_IP_4` / `HOST_IP_6` | docker host's LAN IPs (detected) | empty |
 | `NGINX_PROXY_URL` | proxy URL from the line-1 comment | empty |
-| `BASE_DIR_STORAGE` | host storage root | `/srv/$USER/compose` |
+| `BASE_DIR_STORAGE` | host storage root | resolved compose dir (`/srv/$USER/compose`, or `~/.local/srv/compose` fallback) |
 | `BASE_DIR_DATABASES` | host database root | `/srv/$USER/databases` |
 | `SERVICE_USER` / `SERVICE_GROUP` | run-as user/group | empty |
 | `TRUSTED_PROXIES` | reverse-proxy CIDR allowlist | RFC1918 + loopback list |
@@ -205,6 +205,7 @@ reference names from this vocabulary; app-native variable names
 | `APP_ORG_NAME` | org/display name in UI and mails | `{name}` |
 | `APP_RUN_AS` | in-container run-as user | empty |
 | `APP_ADMIN_USER` / `APP_ADMIN_PASS` | initial admin account | `changeme_*` |
+| `APP_ADMIN_HASH` | pre-hashed admin password (bcrypt/md5) | empty |
 | `APP_USER_NAME` / `APP_USER_PASS` | initial regular account | `changeme_*` |
 | `APP_SECRET_KEY` | primary secret/admin token | `changeme_secret_key_min_32_chars` |
 | `APP_SECRET_TOKEN_16/32/64` | fixed-length secret tokens | `changeme_*` |
@@ -237,6 +238,7 @@ more over time) — the script is always the complete list.
 | `EMAIL_SERVER_LOGIN_NAME` / `EMAIL_SERVER_LOGIN_PASS` | SMTP credentials | empty |
 | `EMAIL_SERVER_MAIL_FROM` | From address | `noreply@example.com` |
 | `EMAIL_SERVER_FROM_ORG` | From display name | `$APP_ORG_NAME` |
+| `EMAIL_SERVER_USE_TLS` / `EMAIL_SERVER_USE_SSL` | SMTP encryption toggles | `true` / `false` |
 
 Every reference uses the `${VAR:-default}` form so the stack works with zero config
 (rule 6).
