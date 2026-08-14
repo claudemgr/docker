@@ -23,6 +23,29 @@ upstream (or `casjaysdevdocker/*`) image reference.
 - **Images used:** upstream official images, or `casjaysdevdocker/{name}` images when
   a CasjaysDev app image exists for the application
 
+## The composemgr tool
+
+`composemgr` (see `composemgr --help`) is the deployment layer around these repos:
+`install` fetches a stack by name/URL, `up`/`down`/`restart`/`logs`/`ps` wrap compose,
+`backup` snapshots project data, `network` manages the shared docker networks,
+`nginx {host} {url}` generates the reverse-proxy config from the line-1 proxy comment,
+and `repo pull|push|commit` handles git ops.
+
+Its env pipeline (`composemgr env` / `__update_env_file`) generates the runtime env
+file: it sources the repo's `app.env`, `~/.config/secure/cloudflare.txt`, detects
+`HOST_IP_4`/`HOST_IP_6` from the default-route interface, and on first run derives
+`BASE_HOST_NAME` as `{name}.$BASE_DOMAIN_NAME`. The variables it exports are the
+vocabulary in PART 3 — compose files consume them, never define their own names.
+
+**Why every reference is `${VAR:-fallback}`:** composemgr exports the real values when
+it runs the stack; the hardcoded safe fallbacks exist so the same compose file also
+works WITHOUT composemgr — plain `docker compose up -d`, zero config. Never remove a
+fallback, and never make a stack depend on composemgr being installed.
+
+The compose template embedded in the script (`composemgr new`) is a starting
+skeleton only — repos are aligned to THIS spec, not to the script's inline template;
+where they differ (labels, ports), this spec wins.
+
 # PART 1 — Non-Negotiable Rules
 
 1. **One stack per repo** — a single `docker-compose.yaml` defining the whole stack
@@ -34,15 +57,23 @@ upstream (or `casjaysdevdocker/*`) image reference.
    only together with the matching label block
 4. **Ports bind to `172.17.0.1`** — never `0.0.0.0`; the stack is fronted by a reverse
    proxy on the docker host (the nginx proxy address comment on line 1 records it)
-5. **No secrets in the repo** — every credential is `${VAR:-changeme_*}`; real values
-   live in `app.env` (gitignored), documented by `app.env.sample`
-6. **`volumes/` is runtime state** — bind mounts live under `./volumes/`; the directory
+5. **Published ports are random from `63000`–`64999`** — when creating a stack (or
+   assigning a new port), pick a random port in that range that no other composemgr
+   repo already uses; verify with
+   `grep -rh -- '172.17.0.1:' ../*/docker-compose.yaml | grep -o ':[0-9]*:' | sort -u`
+   before assigning. The line-1 proxy comment and README Access section must match.
+   Existing repos keep their current ports — never renumber a deployed stack
+6. **Hardcoded fallbacks are mandatory** — every env reference is `${VAR:-fallback}`
+   so the stack runs without composemgr (PART 0); never remove a fallback
+7. **No secrets in the repo** — every credential is `${VAR:-changeme_*}`; real values
+   live in `app.env` (gitignored) and are exported by composemgr at run time
+8. **`volumes/` is runtime state** — bind mounts live under `./volumes/`; the directory
    is never committed (gitignored), only referenced
-7. **No CI/CD files, no Dockerfiles** — these repos deploy images, they never build them
-8. **Standard env var vocabulary** (PART 3) — never invent new names for concepts that
-   already have one (`BASE_HOST_NAME`, `APP_SECRET_KEY`, `DB_USER_PASS`, …)
-9. **Comments above, never inline** — and none inside pure data values
-10. **Commit via `gitcommit --dir {abs_path} all` only** — never `git commit`/`git push`
+9. **No CI/CD files, no Dockerfiles** — these repos deploy images, they never build them
+10. **Standard env var vocabulary** (PART 3) — only use names composemgr exports; never
+    invent new names for concepts that already have one
+11. **Comments above, never inline** — and none inside pure data values
+12. **Commit via `gitcommit --dir {abs_path} all` only** — never `git commit`/`git push`
 
 # PART 2 — Standard Repository Tree
 
@@ -122,26 +153,62 @@ networks:
 
 ## Standard env var vocabulary
 
+These are the variables composemgr exports (see `__update_env_file` in the script).
+Compose files may only reference names from this vocabulary; app-native variable
+names (`GITEA__server__DOMAIN`, `ADMIN_TOKEN`, …) are set from these via
+`APP_NATIVE_VAR: ${STANDARD_VAR:-fallback}` in the `environment:` block.
+
+### Core
+
 | Variable | Meaning | Default pattern |
 |----------|---------|-----------------|
 | `TZ` | timezone | `America/New_York` |
 | `BASE_HOST_NAME` | FQDN the app is served as | `$HOSTNAME` |
 | `BASE_DOMAIN_NAME` | bare domain | `example.com` |
-| `APP_ORG_NAME` | org/display name in UI and mails | `{name}` |
-| `APP_SECRET_KEY` | primary secret/admin token | `changeme_secret_key_min_32_chars` |
-| `APP_INTERNAL_TOKEN` | secondary internal token | `changeme_internal_token_min_32_chars` |
-| `DB_CREATE_DATABASE_NAME` | database name | `{name}` |
-| `DB_USER_NAME` | database user | `{name}` |
-| `DB_USER_PASS` | database password | `changeme_db_password` |
-| `DB_ADMIN_PASS` | database superuser password | `changeme_admin_password` |
-| `EMAIL_SERVER_HOST` | SMTP host | `172.17.0.1` |
-| `EMAIL_SERVER_PORT` | SMTP port | `587` |
-| `EMAIL_SERVER_LOGIN_NAME` | SMTP user | empty |
-| `EMAIL_SERVER_LOGIN_PASS` | SMTP password | empty |
-| `EMAIL_SERVER_MAIL_FROM` | From address | `noreply@example.com` |
+| `HOST_IP_4` / `HOST_IP_6` | docker host's LAN IPs (detected) | empty |
+| `NGINX_PROXY_URL` | proxy URL from the line-1 comment | empty |
+| `BASE_DIR_STORAGE` | host storage root | empty |
+| `BASE_DIR_DATABASES` | host database root | empty |
+| `SERVICE_USER` / `SERVICE_GROUP` | run-as user/group | empty |
 | `CLOUDFLARE_ZONE_NAME` | zone for cloudflare labels | empty |
 
-Every reference uses the `${VAR:-default}` form so the stack works with zero config.
+### App identity, users & secrets
+
+| Variable | Meaning | Default pattern |
+|----------|---------|-----------------|
+| `APP_ORG_NAME` | org/display name in UI and mails | `{name}` |
+| `APP_RUN_AS` | in-container run-as user | empty |
+| `APP_ADMIN_USER` / `APP_ADMIN_PASS` | initial admin account | `changeme_*` |
+| `APP_USER_NAME` / `APP_USER_PASS` | initial regular account | `changeme_*` |
+| `APP_SECRET_KEY` | primary secret/admin token | `changeme_secret_key_min_32_chars` |
+| `APP_INTERNAL_TOKEN` | secondary internal token | `changeme_internal_token_min_32_chars` |
+| `APP_SECRET_TOKEN_16/32/64` | fixed-length secret tokens | `changeme_*` |
+| `APP_JWT_TOKEN` / `APP_API_TOKEN` | JWT / API tokens | `changeme_*` |
+| `APP_TEMP_PASS` | temporary first-run password | `changeme_*` |
+| `RPC_SECRET` / `ENCRYPTION_KEY` | app-specific secrets | `changeme_*` |
+| `BACKUPS_PW` | backup encryption password | `changeme_*` |
+
+### Databases
+
+| Variable | Meaning | Default pattern |
+|----------|---------|-----------------|
+| `DB_CREATE_DATABASE_NAME` | database name | `{name}` |
+| `DB_USER_NAME` / `DB_USER_PASS` | database user/password | `{name}` / `changeme_db_password` |
+| `DB_ADMIN_NAME` / `DB_ADMIN_PASS` | database superuser | `changeme_admin_password` |
+| `POSTGRESQL_URL`, `MARIADB_URL`, `REDIS_URL`, `VALKEY_URL`, `MONGODB_URL`, `COUCHDB_URL`, `MSSQLDB_URL`, `SUPABASE_URL`, `COUCHBASE_URL`, `POCKETBASE_URL` | external shared-DB connection URLs | empty |
+
+### Email
+
+| Variable | Meaning | Default pattern |
+|----------|---------|-----------------|
+| `EMAIL_SERVER_HOST` | SMTP host | `172.17.0.1` |
+| `EMAIL_SERVER_PORT` | SMTP port | `587` |
+| `EMAIL_SERVER_LOGIN_NAME` / `EMAIL_SERVER_LOGIN_PASS` | SMTP credentials | empty |
+| `EMAIL_SERVER_MAIL_FROM` | From address | `noreply@example.com` |
+| `EMAIL_SERVER_FROM_ORG` | From display name | `$APP_ORG_NAME` |
+
+Every reference uses the `${VAR:-default}` form so the stack works with zero config
+(rule 6).
 
 # PART 4 — Optional Label Blocks (add on request only)
 
@@ -178,11 +245,11 @@ Service labels:
       - 'traefik.docker.network=proxy'
       - 'traefik.http.routers.{name}-{service}.entrypoints=http'
       - 'traefik.http.routers.{name}-{service}-secure.tls=true'
-      - 'traefik.http.routers.{name}-{service}.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
+      - 'traefik.http.routers.{name}-{service}.rule=Host(`${BASE_HOST_NAME:-$HOSTNAME}`)'
       - 'traefik.http.middlewares.{name}-{service}-https-redirect.redirectscheme.scheme=https'
       - 'traefik.http.routers.{name}-{service}.middlewares={name}-{service}-https-redirect'
       - 'traefik.http.routers.{name}-{service}-secure.entrypoints=https'
-      - 'traefik.http.routers.{name}-{service}-secure.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
+      - 'traefik.http.routers.{name}-{service}-secure.rule=Host(`${BASE_HOST_NAME:-$HOSTNAME}`)'
       - 'traefik.http.routers.{name}-{service}-secure.tls.certresolver=cloudflare'
       - 'traefik.http.routers.{name}-{service}-secure.service={name}-{service}'
       - 'traefik.http.services.{name}-{service}.loadbalancer.server.port={port}'
@@ -200,6 +267,11 @@ Service networks gain `proxy`; top-level `networks:` gains:
 Merge both label lists under one `labels:` block (traefik+cloudflare enable lines first,
 matching existing repos), add both external networks. `{port}` in every label is the
 service's **internal** container port, never the published one.
+
+**Host rule syntax:** traefik matcher values take backticks —
+``Host(`${BASE_HOST_NAME:-$HOSTNAME}`)``. Existing repos carry a legacy
+`Host($(...))` form; when touching a repo that has labels, correct its Host rules
+to the backtick form as part of the alignment.
 
 # PART 5 — app.env.sample Canon
 
@@ -254,12 +326,18 @@ Before every commit:
 2. README facts diffed against the compose file (ports, images, volumes, env vars)
 3. `app.env.sample` vars all consumed by the compose file, and vice versa for any
    var without a safe inline default
-4. If labels were requested: label `{port}` values equal the container port, and the
-   matching external networks exist at both service and top level
-5. Write `.git/COMMIT_MESS`, re-read it against the diff, then
+4. If labels were requested: label `{port}` values equal the container port, Host
+   rules use the backtick form, and the matching external networks exist at both
+   service and top level
+5. Any newly assigned published port is inside `63000`–`64999` and collides with no
+   other composemgr repo (rule 5); line-1 comment and README Access match it
+6. Write `.git/COMMIT_MESS`, re-read it against the diff, then
    `gitcommit --dir {abs_path} all`
 
 # PART 8 — Examples (from real repos)
+
+Ports shown are the repos' existing (pre-range) assignments — existing stacks keep
+their ports (rule 5); a NEW stack would draw a random port from `63000`–`64999`.
 
 ## Single-service stack (vaultwarden, default form — no labels)
 
@@ -402,11 +480,11 @@ Only the delta against the default single-service example — the `app` service 
       - 'cloudflare.hostname=vaultwarden.${CLOUDFLARE_ZONE_NAME:-}'
       - 'traefik.http.routers.vaultwarden-app.entrypoints=http'
       - 'traefik.http.routers.vaultwarden-app-secure.tls=true'
-      - 'traefik.http.routers.vaultwarden-app.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
+      - 'traefik.http.routers.vaultwarden-app.rule=Host(`${BASE_HOST_NAME:-$HOSTNAME}`)'
       - 'traefik.http.middlewares.vaultwarden-app-https-redirect.redirectscheme.scheme=https'
       - 'traefik.http.routers.vaultwarden-app.middlewares=vaultwarden-app-https-redirect'
       - 'traefik.http.routers.vaultwarden-app-secure.entrypoints=https'
-      - 'traefik.http.routers.vaultwarden-app-secure.rule=Host($(${BASE_HOST_NAME:-$HOSTNAME}))'
+      - 'traefik.http.routers.vaultwarden-app-secure.rule=Host(`${BASE_HOST_NAME:-$HOSTNAME}`)'
       - 'traefik.http.routers.vaultwarden-app-secure.tls.certresolver=cloudflare'
       - 'traefik.http.routers.vaultwarden-app-secure.service=vaultwarden-app'
       - 'traefik.http.services.vaultwarden-app.loadbalancer.server.port=80'
