@@ -21,7 +21,7 @@ Template specifications for CasjaysDev Docker image repositories. Each file is a
 ## Highlights
 
 - Org mapping: GitHub `dockersrc` ↔ Docker Hub `casjaysdev` for bases; `casjaysdevdocker` on both systems for apps, which always build FROM `casjaysdev/*` bases
-- All generated content comes from `gen-dockerfile`/`gen-script` in `casjay-dotfiles/scripts` — the spec defines what is generated vs hand-crafted and which files tooling must never overwrite
+- All generated content comes from `gen-dockerfile`/`gen-script` — the spec defines what is generated vs hand-crafted and which files tooling must never overwrite
 - OCI label canon: `image.url` is the browsable `https://hub.docker.com/r/casjaysdev/{name}` page; `image.source`/`documentation` point at the GitHub repo; retired labels stay retired
 - The bootstrap/update runbook is not in the spec — it lives in the `dockersrc-bootstrap` agent, keeping the template declarative
 

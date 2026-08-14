@@ -52,8 +52,8 @@ The Docker Hub push org is always `casjaysdev` regardless of where the repo is c
 
 1. **`AI.md` is permanent** — never delete it from the repo.
 2. **Generated files are owned by the template system** — never hand-tune content that
-   `gen-dockerfile` regenerates (see PART 1 ownership table); fix the upstream template in
-   `casjay-dotfiles/scripts` instead, then regenerate.
+   `gen-dockerfile` regenerates (see PART 1 ownership table); fix the upstream
+   `gen-dockerfile` template instead, then regenerate.
 3. **Hand-crafted files are owned by the repo** — `gen-dockerfile` must never overwrite
    app-specific init.d scripts, custom bin scripts, or a `05-custom.sh` with real content.
 4. **Removed OCI labels stay removed** (PART 2) — never re-add `base.name`,
@@ -150,10 +150,17 @@ fi
 
 # PART 2: TEMPLATE SYSTEM REFERENCE
 
-Upstream templates live in `casjay-dotfiles/scripts` → `templates/dockerfiles/`,
-installed at `/usr/local/share/CasjaysDev/scripts/templates/dockerfiles/`
-(`$CASJAYSDEVDIR/templates/dockerfiles/` in a dev checkout). Keep this PART in sync
-whenever upstream templates change.
+Templates ship with `gen-dockerfile`, installed at
+`/usr/local/share/CasjaysDev/scripts/templates/dockerfiles/`
+(`$CASJAYSDEVDIR/templates/dockerfiles/` in a dev checkout). To inspect what the current
+templates produce, generate a fresh reference tree in a temp dir:
+
+```bash
+gen-dockerfile /tmp/gen-dockerfile/{org}/{repo} {distro}
+```
+
+See `gen-dockerfile --help` for supported distros/types. Keep this PART in sync whenever
+the templates change.
 
 ## Template inventory
 
