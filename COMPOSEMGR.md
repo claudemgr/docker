@@ -218,6 +218,37 @@ reference names from this vocabulary; app-native variable names
 Every reference uses the `${VAR:-default}` form so the stack works with zero config
 (rule 6).
 
+## Getting values into containers
+
+Two mechanisms, in order of preference:
+
+1. **Inline mapping (preferred)** — wherever the image accepts a specific env var,
+   map the standard vocabulary onto it in the `environment:` block:
+
+   ```yaml
+       environment:
+         ADMIN_TOKEN: ${APP_SECRET_KEY:-changeme_secret_key_min_32_chars}
+         GITEA__database__PASSWD: ${DB_USER_PASS:-changeme_db_password}
+   ```
+
+2. **env_file loading (fallback)** — when the image reads its own native variable
+   names directly (or there are too many to sensibly map one-by-one), set the
+   image-specific vars in `app.env` and hand the env files straight to the
+   container via an anchor (real pattern from the icecast repo):
+
+   ```yaml
+   x-env-file: &env_file
+     - .env
+     - app.env
+   ```
+
+   applied per service with `env_file: *env_file`. `.env` is the
+   composemgr-generated defaults file; `app.env` carries the deployment's
+   overrides.
+
+Both mechanisms may coexist on one service — compose gives `environment:` entries
+precedence over `env_file`, so mapped standard vars stay authoritative.
+
 # PART 4 — Optional Label Blocks (add on request only)
 
 By default a compose file has **no `labels:` block** and only the minimal network set.
@@ -282,6 +313,12 @@ service's **internal** container port, never the published one.
 to the backtick form as part of the alignment.
 
 # PART 5 — app.env.sample Canon
+
+`app.env.sample` is the documented template for the deployment's override file:
+the user copies it to `app.env` and changes the values for their setup. That
+`app.env` then feeds the stack two ways — composemgr sources it when generating
+the runtime env, and services that use the env_file mechanism (PART 3) load it
+directly.
 
 ```sh
 # {Name} environment configuration
