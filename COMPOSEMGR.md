@@ -30,7 +30,12 @@ form of `{name}`.
 `install` fetches a stack by name/URL, `up`/`down`/`restart`/`logs`/`ps` wrap compose,
 `backup` snapshots project data, `network` manages the shared docker networks,
 `nginx {host} {url}` generates the reverse-proxy config from the line-1 proxy comment,
-and `repo pull|push|commit` handles git ops.
+and `repo pull|push|commit` handles git ops. Stacks it manages live under
+`/srv/$USER/compose/{name}` (the script auto-migrates legacy
+`/srv/$USER/composemgr` and `/var/lib/srv/$USER/composemgr` trees there). Networks
+listed in `COMPOSEMGR_NETWORKS` (comma-separated) are created silently before `up`
+if missing. A per-repo `.composemgr` file can set `COMPOSEMGR_ENV_ENABLED` to gate
+env-file generation for that stack.
 
 Its env pipeline (`composemgr env` / `__update_env_file`) generates the runtime env
 file: it sources the repo's `app.env`, `~/.config/secure/cloudflare.txt`, detects
@@ -184,10 +189,13 @@ reference names from this vocabulary; app-native variable names
 | `BASE_DOMAIN_NAME` | bare domain | `example.com` |
 | `HOST_IP_4` / `HOST_IP_6` | docker host's LAN IPs (detected) | empty |
 | `NGINX_PROXY_URL` | proxy URL from the line-1 comment | empty |
-| `BASE_DIR_STORAGE` | host storage root | empty |
-| `BASE_DIR_DATABASES` | host database root | empty |
+| `BASE_DIR_STORAGE` | host storage root | `/srv/$USER/compose` |
+| `BASE_DIR_DATABASES` | host database root | `/srv/$USER/databases` |
 | `SERVICE_USER` / `SERVICE_GROUP` | run-as user/group | empty |
+| `TRUSTED_PROXIES` | reverse-proxy CIDR allowlist | RFC1918 + loopback list |
 | `CLOUDFLARE_ZONE_NAME` | zone for cloudflare labels | empty |
+| `CLOUDFLARE_EMAIL` / `CLOUDFLARE_API_KEY` / `CLOUDFLARE_TUNNEL_ID` | cloudflare credentials (from `~/.config/secure/cloudflare.txt`) | empty |
+| `CLOUDFLARED_LABEL_PREFIX` / `CLOUDFLARED_NETWORK_NAME` | cloudflared companion settings | `cloudflared` |
 
 ### App identity, users & secrets
 
@@ -198,9 +206,9 @@ reference names from this vocabulary; app-native variable names
 | `APP_ADMIN_USER` / `APP_ADMIN_PASS` | initial admin account | `changeme_*` |
 | `APP_USER_NAME` / `APP_USER_PASS` | initial regular account | `changeme_*` |
 | `APP_SECRET_KEY` | primary secret/admin token | `changeme_secret_key_min_32_chars` |
-| `APP_INTERNAL_TOKEN` | secondary internal token | `changeme_internal_token_min_32_chars` |
 | `APP_SECRET_TOKEN_16/32/64` | fixed-length secret tokens | `changeme_*` |
 | `APP_JWT_TOKEN` / `APP_API_TOKEN` | JWT / API tokens | `changeme_*` |
+| `APP_BASE64_TOKEN` | base64 token (defaults from `APP_JWT_TOKEN`) | `changeme_*` |
 | `APP_TEMP_PASS` | temporary first-run password | `changeme_*` |
 | `RPC_SECRET` / `ENCRYPTION_KEY` | app-specific secrets | `changeme_*` |
 | `SECURE_SECRET` / `K256_PRIVATE_KEY` | crypto secrets | `changeme_*` |
@@ -224,6 +232,7 @@ more over time) — the script is always the complete list.
 |----------|---------|-----------------|
 | `EMAIL_SERVER_HOST` | SMTP host | `172.17.0.1` |
 | `EMAIL_SERVER_PORT` | SMTP port | `587` |
+| `EMAIL_SERVER_TIMEOUT` | SMTP timeout | empty |
 | `EMAIL_SERVER_LOGIN_NAME` / `EMAIL_SERVER_LOGIN_PASS` | SMTP credentials | empty |
 | `EMAIL_SERVER_MAIL_FROM` | From address | `noreply@example.com` |
 | `EMAIL_SERVER_FROM_ORG` | From display name | `$APP_ORG_NAME` |
@@ -278,7 +287,9 @@ and never invent label variants.
 Supported tools: `cloudflare`, `traefik`, `caddy`, `watchtower`, `diun`,
 `autoheal`, `homepage`, `dozzle`. Only cloudflare/traefik/caddy touch networking
 (the proxy container must reach the service); the rest are pure label add-ons —
-no network changes. The host nginx proxy is NOT label-driven — it stays on the
+no network changes. The external networks these blocks reference can be
+pre-created automatically by listing them in `COMPOSEMGR_NETWORKS`
+(comma-separated) — composemgr creates any missing ones before `up`. The host nginx proxy is NOT label-driven — it stays on the
 `172.17.0.1:{ext_port}` published port regardless of labels.
 
 ## "add cloudflare"
