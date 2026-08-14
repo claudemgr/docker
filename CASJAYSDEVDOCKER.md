@@ -1,18 +1,19 @@
-# CasjaysDev Docker Base Image Specification (dockersrc)
+# CasjaysDev Docker Application Image Specification (casjaysdevdocker)
 
 **Name**: {name}
 
 **About this file:** This is the complete, authoritative specification for a CasjaysDev
-Docker **base image** repository (`dockersrc/{name}`). It is a master template — copied
-into a base image repo as that repo's `AI.md`. It is **permanent** — never delete it from
-a repo that carries it.
+Docker **application image** repository (`casjaysdevdocker/{name}`). It is a master
+template — copied into an app image repo as that repo's `AI.md`. It is **permanent** —
+never delete it from a repo that carries it.
 
 **Note:** `{name}` in this file is a reference token, not setup-time replacement text. Its
 value is always the repo directory basename (`basename "$PWD"`).
 
 **Maintenance procedure:** The bootstrap/update runbook (regenerating files after upstream
 template changes, creating new repos) is NOT in this file — it lives in the
-`dockersrc-bootstrap` agent. This file defines the standards that procedure enforces.
+`dockersrc-bootstrap` agent (it handles both repo families via `REPO_TYPE` detection).
+This file defines the standards that procedure enforces.
 
 ---
 
@@ -38,15 +39,14 @@ template changes, creating new repos) is NOT in this file — it lives in the
 
 | System | Org | Example |
 |--------|-----|---------|
-| GitHub (source) | `dockersrc` | `https://github.com/dockersrc/{name}` |
-| Docker Hub (push) | `casjaysdev` | `casjaysdev/{name}` |
+| GitHub (source) | `casjaysdevdocker` | `https://github.com/casjaysdevdocker/{name}` |
+| Docker Hub (push) | `casjaysdevdocker` | `casjaysdevdocker/{name}` |
 
-`dockersrc` repos are **OS bases and toolchains** (alpine, debian, ubuntu, almalinux,
-archlinux, web, xorg, go, rust, android). Application images live in the separate
-`casjaysdevdocker` org and pull FROM these images — see the apps specification
-(`CASJAYSDEVDOCKER.md`).
-
-The Docker Hub push org is always `casjaysdev` regardless of where the repo is checked out.
+`casjaysdevdocker` repos are **applications** (gitea, opengist, super-productivity,
+ampache, aria2, …). They always build FROM the pre-built, multi-arch `casjaysdev/*` base
+images — never directly from upstream distro images. The bases themselves live in the
+separate `dockersrc` org (GitHub `dockersrc/{base}` → Docker Hub `casjaysdev/{base}`) —
+see the base specification (`DOCKERSRC.md`).
 
 ## Non-negotiable rules
 
@@ -55,53 +55,53 @@ The Docker Hub push org is always `casjaysdev` regardless of where the repo is c
    `gen-dockerfile` regenerates (see PART 1 ownership table); fix the upstream template in
    `casjay-dotfiles/scripts` instead, then regenerate.
 3. **Hand-crafted files are owned by the repo** — `gen-dockerfile` must never overwrite
-   app-specific init.d scripts, custom bin scripts, or a `05-custom.sh` with real content.
+   app-specific init.d scripts, custom bin scripts, a `05-custom.sh` with real content, or
+   a hand-crafted README (PART 6).
 4. **Removed OCI labels stay removed** (PART 2) — never re-add `base.name`,
    `schema-version`, or duplicate `authors`/`source` entries.
-5. **`image.url` is a browsable page** — `https://hub.docker.com/r/casjaysdev/{name}`.
+5. **`image.url` is a browsable page** — `https://hub.docker.com/r/casjaysdevdocker/{name}`.
    `docker.io` is only a registry pull host; it is never a label URL.
 6. **`image.source` and `image.documentation` are the GitHub repo** —
-   `https://github.com/dockersrc/{name}`.
-7. **One variant, one file set** — every published version tag has its own
-   `Dockerfile.{ver}`, `.env.scripts.{ver}`, and `.gitea/workflows/build.{ver}.yml`.
-8. **Only `root/`, `tmp/`, and `usr/` may exist at `rootfs/` top level** (PART 1).
-9. **Maintenance runs through the `dockersrc-bootstrap` agent** — do not improvise the
-   update procedure from memory.
+   `https://github.com/casjaysdevdocker/{name}`.
+7. **One Dockerfile, one file set** — app repos build one image (`latest` + date tag);
+   version variants (`Dockerfile.{ver}`) belong to base repos only.
+8. **Always `FROM casjaysdev/<base>`** — never pull an upstream distro image directly;
+   the base repos exist so every app shares one patched, multi-arch foundation.
+9. **Only `root/`, `tmp/`, and `usr/` may exist at `rootfs/` top level** (PART 1).
+10. **Maintenance runs through the `dockersrc-bootstrap` agent** — do not improvise the
+    update procedure from memory.
 
 ---
 
 # PART 1: REPOSITORY MODEL & STRUCTURE
 
-## What a base image repo is
+## What an app image repo is
 
-A `dockersrc/{name}` repo builds one image family from upstream official distro images
-(never from `casjaysdev/*` — base repos ARE the `casjaysdev/*` images). OS repos publish
-one variant per supported release; toolchain repos (go, rust, android) publish `latest`
-plus whatever the toolchain needs.
+A `casjaysdevdocker/{name}` repo containerizes one application on top of a
+`casjaysdev/*` base. It publishes a single image (`casjaysdevdocker/{name}:latest` plus a
+date tag) — no per-version Dockerfile variants. The application itself is installed in
+`05-custom.sh` and started by one or more init.d service scripts.
 
 ## Standard tree
 
 ```
 {name}/
 ├── AI.md                          # This specification (permanent)
-├── Dockerfile                     # [generated] latest/default variant
-├── Dockerfile.{ver}               # [generated] one per version variant (OS repos)
+├── Dockerfile                     # [generated] single build file
 ├── .dockerignore                  # [generated]
-├── .env.scripts                   # [generated] build config for the default variant
-├── .env.scripts.{ver}             # [generated] one per version variant
+├── .env.scripts                   # [generated] build config
 ├── .gitattributes                 # [generated]
 ├── .gitea/workflows/
-│   ├── build.yml                  # [generated] gen-dockerfile actions — default variant
-│   └── build.{ver}.yml            # [generated] one per version variant
+│   └── build.yml                  # [generated] gen-dockerfile actions
 ├── .gitignore                     # [generated]
-├── LICENSE.md                     # License (WTFPL)
-├── README.md                      # [generated] standard layout (PART 6)
+├── LICENSE.md                     # License (WTFPL / app's own license)
+├── README.md                      # [generated*] standard layout (PART 6)
 └── rootfs/                        # Container filesystem overlay
     ├── root/docker/setup/         # [generated*] build-time setup scripts 00–07
     ├── tmp/                       # staged files installed at build time (optional)
     └── usr/local/
         ├── bin/                   # [generated*] entrypoint.sh, pkmgr, symlink, copy,
-        │                          #   healthcheck + [hand-crafted] repo-specific scripts
+        │                          #   healthcheck + [hand-crafted] app-specific scripts
         └── etc/docker/
             ├── env/               # [hand-crafted] build/runtime env fragments (optional)
             ├── functions/
@@ -111,9 +111,12 @@ plus whatever the toolchain needs.
 
 `[generated]` — safe to regenerate; local edits will be lost.
 `[generated*]` — regenerated from the template, EXCEPT files carrying repo-specific
-content (`05-custom.sh` with a real body, extra bin scripts) — those follow the
-hand-crafted rules in PART 5.
+content (`05-custom.sh` with a real body, extra bin scripts, a hand-crafted README) —
+those follow the hand-crafted rules in PARTs 5 and 6.
 `[hand-crafted]` — never overwritten by the template system.
+
+App repos may additionally carry project files (`IDEA.md`, `CLAUDE.md`, `TODO.AI.md`)
+per the global project conventions — they are repo-owned and never touched by tooling.
 
 ## rootfs top-level policy
 
@@ -134,9 +137,9 @@ Anything else is a leftover from old patterns. Migration map:
 from the template system; the entrypoint installs staged files from `rootfs/tmp/etc/`
 at container start instead.
 
-## Variant detection
+## Repo type detection
 
-A repo is a **base** repo when `Dockerfile.*` variant files exist:
+A repo is an **app** repo when no `Dockerfile.*` variant files exist:
 
 ```bash
 if find . -maxdepth 1 -name 'Dockerfile.*' -type f | grep -q -- .; then
@@ -157,15 +160,21 @@ whenever upstream templates change.
 
 ## Template inventory
 
-| Template | Final stage | Init / PID 1 | Base OS |
-|----------|-------------|--------------|---------|
-| `alpine.template` | `scratch.template` | tini | Alpine |
-| `debian.template` | `scratch.template` | tini | Debian |
-| `ubuntu.template` | `scratch.template` | tini | Ubuntu |
-| `rhel.template` | `scratch.template` | tini | AlmaLinux |
-| `archlinux.template` | `scratch.template` | tini | Arch Linux (multi-arch note below) |
-| `web.template` | `systemd.template` | `/sbin/init` | Debian |
-| `xorg.template` | `systemd.template` | `/sbin/init` | Debian |
+The template name selects the base OS family; for an app repo the resulting pull URL is
+always the matching `casjaysdev/*` image:
+
+| Template | Final stage | Init / PID 1 | App pulls FROM |
+|----------|-------------|--------------|----------------|
+| `alpine.template` | `scratch.template` | tini | `casjaysdev/alpine` |
+| `debian.template` | `scratch.template` | tini | `casjaysdev/debian` |
+| `ubuntu.template` | `scratch.template` | tini | `casjaysdev/ubuntu` |
+| `rhel.template` | `scratch.template` | tini | `casjaysdev/almalinux` |
+| `archlinux.template` | `scratch.template` | tini | `casjaysdev/archlinux` (multi-arch manifest) |
+| `web.template` | `systemd.template` | `/sbin/init` | `casjaysdev/web` |
+| `xorg.template` | `systemd.template` | `/sbin/init` | `casjaysdev/xorg` |
+
+Default template for app repos is `alpine` unless the application needs systemd, a GUI
+stack, or a distro-specific package.
 
 ## Final-stage templates
 
@@ -206,15 +215,16 @@ Shell-expanded values (no `\`) are evaluated at template-render time by `gen-doc
 Dollar-escaped values (`\${...}`) become literal Docker `ARG`/`ENV` references in the
 generated `Dockerfile`.
 
-Resolved values for a `dockersrc` repo pushing to Docker Hub:
+Resolved values for a `casjaysdevdocker` repo pushing to Docker Hub:
 
 | Label | Value |
 |-------|-------|
-| `url` | `https://hub.docker.com/r/casjaysdev/{name}` — browsable Hub page; `gen-dockerfile` derives it from the registry host (`docker.io` → `hub.docker.com/r/`) |
-| `source` | `https://github.com/dockersrc/{name}` |
-| `documentation` | `https://github.com/dockersrc/{name}` |
+| `url` | `https://hub.docker.com/r/casjaysdevdocker/{name}` — browsable Hub page; `gen-dockerfile` derives it from the registry host (`docker.io` → `hub.docker.com/r/`) |
+| `source` | `https://github.com/casjaysdevdocker/{name}` |
+| `documentation` | `https://github.com/casjaysdevdocker/{name}` |
 
-Removed labels (never re-add):
+Older app repos may still carry `url="https://docker.io/casjaysdevdocker/{name}"` — that
+is the stale form; regeneration corrects it. Removed labels (never re-add):
 - `org.opencontainers.image.base.name` — belongs on the base image, not this image
 - `org.opencontainers.image.schema-version` — non-spec; redundant with `version`
 - Any duplicate `authors` or `source` entries
@@ -238,44 +248,23 @@ It selects the `GEN_DOCKER_SPECIFY_IMAGE_SOURCE_*` defaults:
 - `casjaysdevdocker/*` repos → `FROM casjaysdev/<distro>:latest` (pre-built, multi-arch)
 - `dockersrc/*` and all other orgs → `FROM <distro>:latest` (upstream official images)
 
-Base repos always pull upstream — a base image never builds FROM itself. Override by
-exporting `GEN_DOCKERFILE_APP_DIR` before calling `gen-dockerfile`.
+App repos must resolve to the `casjaysdev/*` branch — a checkout outside
+`~/Projects/*/casjaysdevdocker/` needs `GEN_DOCKERFILE_APP_DIR="casjaysdevdocker"`
+exported before calling `gen-dockerfile`, or the regenerated Dockerfile silently reverts
+to upstream distro pulls (rule 8 violation).
 
-## Arch Linux multi-arch (`archlinux.template`)
+## Arch Linux apps
 
-When building the base image (`GEN_DOCKERFILE_APP_DIR != "casjaysdevdocker"`), the
-template emits a three-stage FROM for `linux/amd64` + `linux/arm64`:
+`casjaysdev/archlinux` is a multi-arch manifest (`linux/amd64` + `linux/arm64`), so app
+repos use a single `FROM ${PULL_URL}:${DISTRO_VERSION} AS build` — the three-stage
+`base-${TARGETARCH}` FROM block belongs to the base repo only.
 
-```dockerfile
-ARG TARGETARCH
-ARG TARGETPLATFORM
-FROM --platform=${TARGETPLATFORM} archlinux:latest AS base-amd64
-FROM --platform=${TARGETPLATFORM} lopsided/archlinux-arm64v8:latest AS base-arm64
-FROM base-${TARGETARCH} AS build
-```
+## `web.template` / `xorg.template` notes
 
-App repos pull `casjaysdev/archlinux`, a multi-arch manifest, so a single
-`FROM ${PULL_URL}:${DISTRO_VERSION} AS build` suffices there.
-
-## `web.template` packages
-
-systemd + noVNC stack in the build stage:
-
-```
-systemd systemd-sysv dbus dbus-x11 procps
-tigervnc-standalone-server novnc openbox xdotool
-```
-
-Default ports: `SERVICE_PORT="5800"`, `EXPOSE_PORTS="5800 5900"`.
-
-## `xorg.template` packages
-
-systemd + Xorg stack in the build stage:
-
-```
-systemd systemd-sysv dbus dbus-x11 procps
-xserver-xorg x11-xserver-utils xinit
-```
+`web` apps inherit the systemd + noVNC stack (`SERVICE_PORT="5800"`,
+`EXPOSE_PORTS="5800 5900"` defaults); `xorg` apps inherit the systemd + Xorg stack. App
+packages go in `ENV_PACKAGES` / `02-packages.sh`, never by editing the template's stack
+list.
 
 ## `debian.template` / `ubuntu.template` — RUN continuation
 
@@ -312,12 +301,12 @@ Usage: gen-dockerfile [options] [dir] [template] [repo-name] [git-repo-url]
 
 | Flag | Meaning |
 |------|---------|
-| `--update` | Rewrite `.env.scripts` (add/drop vars against the current template) and update ARG/LABEL lines in every `Dockerfile`/`Dockerfile.*`. Touches no other file. |
+| `--update` | Rewrite `.env.scripts` (add/drop vars against the current template) and update ARG/LABEL lines in the `Dockerfile`. Touches no other file. |
 | `--nogit` | Do not init or commit a git repo — required inside an existing repo. |
 | `--dir PATH` | Operate on / write output to PATH instead of `$PWD`. |
 | `--template NAME` | Template to use (`alpine`, `debian`, `ubuntu`, `rhel`, `archlinux`, `scratch`, `web`, `xorg`). Defaults to `alpine`. |
 | `--repo NAME` | Registry repo name (image basename). Defaults to the directory name. |
-| `--org NAME` | Registry owner / GitHub org (`--user` is an alias). Prefix `git:` or `reg:` to scope to one system; bare value sets both. |
+| `--org NAME` | Registry owner / GitHub org (`--user` is an alias). Prefix `git:` or `reg:` to scope to one system; bare value sets both. For app repos both are `casjaysdevdocker`. |
 | `--registry URL` | Registry provider URL (e.g. `https://docker.io`). |
 | `--tag VERSION` | Image version tag (default `latest`). |
 | `--add-tags TAGS` | Comma-separated additional tags (`USE_DATE` = auto date tag). |
@@ -330,11 +319,8 @@ Usage: gen-dockerfile [options] [dir] [template] [repo-name] [git-repo-url]
 Resolution order when a value is not given by a flag: flags → git remote → project dirs →
 defaults.
 
-Special subcommand — `gen-dockerfile actions` writes `.gitea/workflows/build.yml`
-(`build.{ver}.yml` for versioned tags) from the existing `Dockerfile` (PART 7).
-
-Base repos update `Dockerfile` AND every `Dockerfile.*` variant on `--update`; the
-matching `.env.scripts.{ver}` files carry per-variant values.
+Special subcommand — `gen-dockerfile actions` writes `.gitea/workflows/build.yml` from
+the existing `Dockerfile` (PART 7). App repos have no versioned `build.{ver}.yml` files.
 
 ## `gen-script`
 
@@ -358,31 +344,29 @@ Other flags: `-k`/`--keep` (never overwrite), `--replace` (new header replaces o
 
 # PART 4: `.env.scripts` REFERENCE
 
-Generated at the repo root; sourced by `gen-dockerfile` and by CI at build time. Base
-repos carry one per variant (`.env.scripts` + `.env.scripts.{ver}`). It is a pure
-`KEY="value"` file — no logic.
+Generated at the repo root; sourced by `gen-dockerfile` and by CI at build time. App
+repos carry exactly one. It is a pure `KEY="value"` file — no logic.
 
 ## Variables
 
 | Variable | Purpose |
 |----------|---------|
-| `ENV_DOCKERFILE` | Dockerfile the variant builds (`Dockerfile` or `Dockerfile.{ver}`) |
+| `ENV_DOCKERFILE` | Dockerfile to build (`Dockerfile`) |
 | `ENV_REGISTRY_REPO` | Image name in the registry (`{name}`) |
-| `ENV_REGISTRY_ORG` | Registry namespace — `casjaysdev` for base repos |
+| `ENV_REGISTRY_ORG` | Registry namespace — `casjaysdevdocker` for app repos |
 | `ENV_REGISTRY_URL` | Registry base URL (`https://docker.io`) — pull/push host, never a label URL |
-| `ENV_REGISTRY_PUSH` | Full push path `org/repo` (`casjaysdev/{name}`) |
+| `ENV_REGISTRY_PUSH` | Full push path `org/repo` (`casjaysdevdocker/{name}`) |
 | `ENV_ADD_IMAGE_PUSH` | Extra push destinations |
-| `ENV_GIT_REPO_URL` | Full Git repo URL — `https://github.com/dockersrc/{name}`; feeds the `source`/`documentation` labels, so a wrong value here regresses labels on regeneration |
-| `ENV_USE_TEMPLATE` | Template name (`alpine`, `debian`, …) |
-| `ENV_PULL_URL` | Base image to pull FROM |
-| `ENV_DISTRO_TAG` | Tag for the pull image |
-| `ENV_IMAGE_TAG` | Default image tag (`latest`, or the variant version) |
+| `ENV_GIT_REPO_URL` | Full Git repo URL — `https://github.com/casjaysdevdocker/{name}`; feeds the `source`/`documentation` labels, so a wrong value here regresses labels on regeneration |
+| `ENV_USE_TEMPLATE` | Template name (`alpine`, `debian`, …) — the authoritative record of which base family the app builds on |
+| `ENV_PULL_URL` | Base image to pull FROM (`casjaysdev/<base>`) |
+| `ENV_DISTRO_TAG` | Tag for the pull image (`latest`) |
+| `ENV_IMAGE_TAG` | Default image tag (`latest`) |
 | `ENV_ADD_TAGS` | Additional comma-separated tags; `USE_DATE` auto-generates a date tag |
 | `ENV_PACKAGES` | Space-separated package list |
 | `ENV_VENDOR` / `ENV_AUTHOR` / `ENV_MAINTAINER` | Label metadata |
-| `SERVICE_PORT` | Primary exposed port (empty for pure base images) |
+| `SERVICE_PORT` | Primary exposed port — apps normally set this |
 | `EXPOSE_PORTS` | Additional exposed ports |
-| `LANG_VERSION` | Language runtime version (toolchain repos) |
 | `PHP_VERSION` / `NODE_VERSION` / `NODE_MANAGER` | Runtime versions (`system` default) |
 | `WWW_ROOT_DIR` | Web root (`/usr/local/share/httpd/default`) |
 | `DOCKER_ENTYPOINT_PORTS_WEB` / `DOCKER_ENTYPOINT_PORTS_SRV` | Ports passed to the entrypoint |
@@ -417,16 +401,16 @@ Run in order inside the build stage:
 | `02-packages.sh` | App-specific packages, package managers, language runtimes |
 | `03-files.sh` | Install staged files (`rootfs/tmp/etc/*` → `/etc/*`), permissions, symlinks |
 | `04-users.sh` | Create service users/groups |
-| `05-custom.sh` | Application/toolchain-specific install logic |
+| `05-custom.sh` | Application install logic — the heart of an app repo |
 | `06-post.sh` | Post-install configuration |
 | `07-cleanup.sh` | Remove build deps, caches, temp files |
 
-**`05-custom.sh` ownership:** the upstream template ships an empty stub. Any repo whose
-`05-custom.sh` has a real body (e.g. a toolchain repo's install logic) owns that content —
-it exists only in the repo's git history, never in the template. On regeneration, keep the
-existing body and pull forward only boilerplate (version-stamp header, `set` line,
-shellcheck-disable line). The same rule applies to any other `0*.sh` found to contain real
-logic beyond the stub.
+**`05-custom.sh` ownership:** the upstream template ships an empty stub. An app repo's
+`05-custom.sh` carries the application install (download/build, users, default config) —
+that content exists only in the repo's git history, never in the template. On
+regeneration, keep the existing body and pull forward only boilerplate (version-stamp
+header, `set` line, shellcheck-disable line). The same rule applies to any other `0*.sh`
+found to contain real logic beyond the stub.
 
 ## Entrypoint flow
 
@@ -457,8 +441,8 @@ repo-owned. Their `@@Template` header governs maintenance:
 ## init.d scripts — critical rules
 
 **Each service gets its own numbered init.d script. Never merge or remove services.**
-`__start_init_scripts` sources every `*.sh` in sort order — multi-process repos have one
-script per daemon (`01-named.sh`, `02-nginx.sh`, `03-php-fpm.sh`, …).
+`__start_init_scripts` sources every `*.sh` in sort order — multi-process apps have one
+script per daemon (e.g. gitea: `05-dockerd.sh`, `08-gitea.sh`, `zz-act_runner.sh`).
 
 init.d scripts are **regenerated, never patched in place** — old copies may call functions
 removed from the current `functions/entrypoint.sh`. Generate fresh via
@@ -534,9 +518,14 @@ fi
 
 # PART 6: README.md STANDARD LAYOUT
 
-Base image layout (`dockersrc/{name}` → `casjaysdev/{name}`). Substitute `{name}`;
-this repo family has no `-p` port mappings unless `SERVICE_PORT` is set in
-`.env.scripts` — omit all port sections when it is empty.
+App image layout (`casjaysdevdocker/{name}` → `casjaysdevdocker/{name}`). Substitute
+`{name}` and `{port}` (the value of `SERVICE_PORT`); omit all `-p`/`ports:` sections only
+in the rare case `SERVICE_PORT` is empty.
+
+**Hand-crafted README exception:** a repo whose README deliberately diverges from this
+layout (full env-var tables, app-specific quick-start flags — e.g. gitea) owns its README.
+Update its facts (image name, org, ports, URLs), never rewrite its structure back to the
+generated layout.
 
 ````markdown
 ## 👋 Welcome to {name} 🚀
@@ -554,60 +543,69 @@ this repo family has no `-p` port mappings unless `SERVICE_PORT` is set in
 ## Automatic install/update
 
 ```shell
-dockermgr update os {name}
+dockermgr update {name}
 ```
 
 ## Install and run container
 
 ```shell
-mkdir -p "/var/lib/srv/root/docker/casjaysdev/{name}/latest"
+dockerHome="/srv/$USER/docker/casjaysdevdocker/{name}/latest/volumes"
+mkdir -p "$dockerHome"
 git clone "https://github.com/dockermgr/{name}" "$HOME/.local/share/CasjaysDev/dockermgr/{name}"
-cp -Rfva "$HOME/.local/share/CasjaysDev/dockermgr/{name}/rootfs/." "/var/lib/srv/root/docker/casjaysdev/{name}/latest/"
+cp -Rfva "$HOME/.local/share/CasjaysDev/dockermgr/{name}/volumes/." "$dockerHome/"
 docker run -d \
 --restart always \
 --privileged \
---name casjaysdev-{name}-latest \
+--name casjaysdevdocker-{name}-latest \
 --hostname {name} \
 -e TZ=${TIMEZONE:-America/New_York} \
--v "/var/lib/srv/root/docker/casjaysdev/{name}/latest/data:/data:z" \
--v "/var/lib/srv/root/docker/casjaysdev/{name}/latest/config:/config:z" \
-casjaysdev/{name}:latest
+-v "$dockerHome/data:/data:z" \
+-v "$dockerHome/config:/config:z" \
+-p {port}:{port} \
+casjaysdevdocker/{name}:latest
 ```
 
 ## via docker-compose
 
 ```yaml
-version: "2"
 services:
   ProjectName:
-    image: casjaysdev/{name}
-    container_name: casjaysdev-{name}-latest
+    image: casjaysdevdocker/{name}
+    container_name: casjaysdevdocker-{name}
     environment:
       - TZ=America/New_York
       - HOSTNAME={name}
     volumes:
-      - "/var/lib/srv/root/docker/casjaysdev/{name}/latest/data:/data:z"
-      - "/var/lib/srv/root/docker/casjaysdev/{name}/latest/config:/config:z"
+      - "/srv/$USER/docker/casjaysdevdocker/{name}/latest/volumes/data:/data:z"
+      - "/srv/$USER/docker/casjaysdevdocker/{name}/latest/volumes/config:/config:z"
+    ports:
+      - {port}:{port}
     restart: always
 ```
 
 ## Get source files
 
 ```shell
-dockermgr download src os {name}
+dockermgr download src casjaysdevdocker/{name}
+```
+
+OR
+
+```shell
+git clone "https://github.com/casjaysdevdocker/{name}" "$HOME/Projects/github/casjaysdevdocker/{name}"
 ```
 
 ## Build container
 
 ```shell
-git clone "https://github.com/dockersrc/{name}" "$HOME/Projects/github/dockersrc/{name}"
-cd "$HOME/Projects/github/dockersrc/{name}" && buildx all
+cd "$HOME/Projects/github/casjaysdevdocker/{name}"
+buildx
 ```
 
 ## Authors
 
 🤖 casjay: [Github](https://github.com/casjay) 🤖
-⛵ casjaysdev: [Github](https://github.com/dockersrc) [Docker](https://hub.docker.com/u/casjaysdev) ⛵
+⛵ casjaysdevdocker: [Github](https://github.com/casjaysdevdocker) [Docker](https://hub.docker.com/u/casjaysdevdocker) ⛵
 ````
 
 ---
@@ -617,8 +615,8 @@ cd "$HOME/Projects/github/dockersrc/{name}" && buildx all
 ## Generated workflow (`gen-dockerfile actions`)
 
 `gen-dockerfile actions` writes `.gitea/workflows/build.yml` from the current
-`Dockerfile`; versioned variants get `build.{ver}.yml` (named `Build and Push {ver}`, no
-schedule trigger, fixed version tag only). All actions are SHA-pinned — never tag-pinned.
+`Dockerfile`. App repos get the single `build.yml` only — no versioned variants. All
+actions are SHA-pinned — never tag-pinned.
 
 - **Triggers:** `push` to `main`, monthly schedule, `workflow_dispatch`
 - **Registry strategy:** always logs in to the Gitea registry via the auto-provided
@@ -627,8 +625,7 @@ schedule trigger, fixed version tag only). All actions are SHA-pinned — never 
   the registry, `vars.DOCKER_ORG` the namespace)
 - **Platforms:** `linux/amd64,linux/arm64`
 - **build-args:** only `BUILD_DATE`, `GIT_COMMIT`, `BUILD_VERSION`
-- **Tags pushed:** date tag (`yymm`) + `latest` (or the fixed variant version) to both
-  registries
+- **Tags pushed:** date tag (`yymm`) + `latest` to both registries
 - **Annotations:** mirror the OCI label standard (PART 2), with `url`/`source`/
   `documentation` set to the workflow's repository URL
 
@@ -672,6 +669,8 @@ After any regeneration:
 2. No script calls a function absent from both the current
    `functions/entrypoint.sh` and the script itself.
 3. No `__copy_templates` calls remain (retired with `DEFAULT_TEMPLATE_DIR`).
+4. `Dockerfile` still pulls `FROM casjaysdev/*` (rule 8) — an upstream distro pull means
+   `GEN_DOCKERFILE_APP_DIR` resolved wrong during regeneration.
 
 ## Commit
 
