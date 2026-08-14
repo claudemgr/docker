@@ -11,6 +11,13 @@ bugs in this repo's templates.
   (`- .env`), which breaks the zero-config guarantee when the files are
   absent — convert to `- path: .env` / `required: false` form per
   COMPOSEMGR.md PART 3 (fix on touch)
+- [ ] `composemgr` script gap (user's call, script maintained by user):
+  `__update_env_file` does not export `APP_ADMIN_HASH`,
+  `EMAIL_SERVER_USE_TLS`, `EMAIL_SERVER_USE_SSL` although
+  `composemgr/.github` default.env.sample carries them and
+  authentik/sentry/paperless-ngx consume the TLS/SSL pair — env
+  regeneration silently drops user-set values for these three vars;
+  either add the exports to the script or drop them from the sample
 - [ ] 286 of 300 `composemgr/*` repos carry legacy traefik labels with
   invalid `Host($(${BASE_HOST_NAME:-$HOSTNAME}))` matcher syntax and
   labels enabled by default — correct to backtick `Host(` form and
